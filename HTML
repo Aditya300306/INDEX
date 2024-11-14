@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Forecast App</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Roboto', sans-serif;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #4f8ef7, #f58ec6);
+            transition: background 0.3s ease;
+        }
+
+        .container {
+            text-align: center;
+            max-width: 400px;
+            padding: 20px;
+            border-radius: 12px;
+            background: #ffffffdd;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        h1 {
+            margin-bottom: 20px;
+            font-weight: 700;
+            color: #444;
+        }
+
+        .api-key-container, .button-group, #location-input {
+            margin: 15px 0;
+        }
+
+        #location-input, #api-key-input {
+            width: 80%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border 0.3s;
+        }
+
+        .button-group button, #toggle-theme, #save-api-key {
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 6px;
+            color: #fff;
+            font-size: 15px;
+            cursor: pointer;
+            transition: background 0.3s, transform 0.2s;
+        }
+
+        #toggle-theme {
+            background: #333;
+        }
+
+        .button-group button:hover, #save-api-key:hover, #toggle-theme:hover {
+            opacity: 0.9;
+            transform: scale(1.03);
+        }
+
+        .button-group button:nth-child(1) { background-color: #4f9ff7; }
+        .button-group button:nth-child(2) { background-color: #e573b9; }
+        .button-group button:nth-child(3) { background-color: #7258c3; }
+        .button-group button:nth-child(4) { background-color: #00a860; }
+        .button-group button:nth-child(5) { background-color: #ff8533; }
+        .button-group button:nth-child(6) { background-color: #ff4366; }
+        .button-group button:nth-child(7) { background-color: #33ccff; }
+
+        .weather-card {
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 20px;
+            color: #fff;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            transition: background 0.3s;
+        }
+
+        .sunny { background: #ffda4d; color: #333; }
+        .cloudy { background: #8a8a8a; color: #e0e0e0; }
+        .rainy { background: #4c73c3; }
+
+        .temperature {
+            font-size: 42px;
+            font-weight: 700;
+        }
+
+        .condition {
+            font-size: 20px;
+            margin-bottom: 15px;
+        }
+
+        .dark-mode {
+            background: linear-gradient(135deg, #1a2535, #374a6d);
+            color: #fff;
+        }
+
+        .dark-mode .container {
+            background: rgba(30, 30, 30, 0.85);
+        }
+
+        .dark-mode input, .dark-mode button {
+            background: #555;
+            color: #fff;
+        }
+
+        #history-display {
+            margin-top: 15px;
+            color: #666;
+            padding: 10px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Weather Forecast</h1>
+        <div class="toggle-container">
+            <button id="toggle-theme">🌙 Dark Mode</button>
+        </div>
+        <div class="api-key-container">
+            <input type="text" id="api-key-input" placeholder="Enter API Key">
+            <button id="save-api-key" onclick="saveApiKey()">Save</button>
+        </div>
+        <input type="text" id="location-input" placeholder="Enter city name">
+        <div class="button-group">
+            <button onclick="fetchWeather()">Get Weather</button>
+            <button onclick="resetLocation()">Reset Location</button>
+            <button onclick="refreshWeather()">Refresh Weather</button>
+            <button onclick="toggleTempUnit()">°C/°F</button>
+            <button onclick="showSearchHistory()">Previous Searches</button>
+            <button onclick="clearHistory()">Clear History</button>
+            <button onclick="randomLocation()">Random Location</button>
+        </div>
+        <div id="weather-display"></div>
+        <div id="history-display" style="display: none;"></div>
+    </div>
+
+    <script>
+        let unit = "C";
+        const savedSearches = JSON.parse(localStorage.getItem("searchHistory")) || [];
+        const apiKeyInput = document.getElementById('api-key-input');
+        const locationInput = document.getElementById('location-input');
+        const weatherDisplay = document.getElementById('weather-display');
+        const toggleThemeButton = document.getElementById('toggle-theme');
+        const historyDisplay = document.getElementById('history-display');
+        const body = document.body;
+
+        window.onload = () => {
+            const savedApiKey = localStorage.getItem('weatherApiKey');
+            const savedTheme = localStorage.getItem('theme');
+            if (savedApiKey) apiKeyInput.value = savedApiKey;
+            if (savedTheme === 'dark') enableDarkMode();
+        };
+
+        function saveApiKey() {
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                alert('Please enter a valid API key');
+                return;
+            }
+            localStorage.setItem('weatherApiKey', apiKey);
+            alert('API key saved!');
+        }
+
+        locationInput.addEventListener('keyup', (event) => {
+            if (event.key === 'Enter') fetchWeather();
+        });
+
+        async function fetchWeather() {
+            const apiKey = apiKeyInput.value.trim();
+            const location = locationInput.value.trim();
+            if (!apiKey) {
+                weatherDisplay.innerHTML = '<p class="error">Please enter your WeatherAPI.com API key.</p>';
+                return;
+            }
+            if (!location) {
+                weatherDisplay.innerHTML = '<p class="error">Please enter a city name.</p>';
+                return;
+            }
+
+            weatherDisplay.innerHTML = '<p class="loading">Loading...</p>';
+
+            const apiUrl = https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${encodeURIComponent(location)}&aqi=yes;
+            try {
+                const response = await fetch(apiUrl);
+                const data = await response.json();
+                if (!response.ok) {
+                    weatherDisplay.innerHTML = <p class="error">${data.error.message || 'Failed to fetch weather data.'}</p>;
+                    return;
+                }
+
+                const { location: loc, current } = data;
+                saveToHistory(loc.name);
+                let weatherClass = 'weather-card';
+                if (current.condition.text.toLowerCase().includes("sunny")) {
+                    weatherClass += ' sunny';
+                } else if (current.condition.text.toLowerCase().includes("cloud")) {
+                    weatherClass += ' cloudy';
+                } else if (current.condition.text.toLowerCase().includes("rain")) {
+                    weatherClass += ' rainy';
+                }
+
+                const temp = unit === "C" ? ${current.temp_c}°C : ${current.temp_f}°F;
+
+                weatherDisplay.innerHTML = `
+                    <div class="${weatherClass}">
+                        <h2>${loc.name}, ${loc.country}</h2>
+                        <img src="${current.condition.icon}" alt="${current.condition.text}" width="64" height="64">
+                        <div class="temperature">${temp}</div>
+                        <div class="condition">${current.condition.text}</div>
+                        <div class="details">
+                            <div class="detail-item">
+                                <div class="detail-label">Feels Like</div>
+                                <div class="detail-value">${unit === "C" ? current.feelslike_c : current.feelslike_f}°${unit}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Humidity</div>
+                                <div class="detail-value">${current.humidity}%</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Wind Speed</div>
+                                                                <div class="detail-value">${current.wind_kph} kph</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                weatherDisplay.innerHTML = <p class="error">Error fetching weather data. Please try again.</p>;
+            }
+        }
+
+        function saveToHistory(location) {
+            savedSearches.push(location);
+            localStorage.setItem("searchHistory", JSON.stringify(savedSearches));
+        }
+
+        function showSearchHistory() {
+            if (savedSearches.length === 0) {
+                historyDisplay.style.display = 'block';
+                historyDisplay.innerHTML = '<p>No previous searches.</p>';
+                return;
+            }
+            historyDisplay.style.display = 'block';
+            historyDisplay.innerHTML = `
+                <h3>Previous Searches</h3>
+                <ul>
+                    ${savedSearches.map(location => <li>${location}</li>).join('')}
+                </ul>
+            `;
+        }
+
+        function clearHistory() {
+            localStorage.removeItem("searchHistory");
+            savedSearches.length = 0;
+            historyDisplay.style.display = 'none';
+        }
+
+        function toggleTempUnit() {
+            unit = unit === "C" ? "F" : "C";
+            if (locationInput.value) fetchWeather();
+        }
+
+        function resetLocation() {
+            locationInput.value = '';
+            weatherDisplay.innerHTML = '';
+            historyDisplay.style.display = 'none';
+        }
+
+        function refreshWeather() {
+            if (locationInput.value) fetchWeather();
+        }
+
+        function randomLocation() {
+            const randomCities = ["Paris", "New York", "Tokyo", "Berlin", "Sydney", "Cairo", "Moscow"];
+            locationInput.value = randomCities[Math.floor(Math.random() * randomCities.length)];
+            fetchWeather();
+        }
+
+        function enableDarkMode() {
+            body.classList.add('dark-mode');
+            toggleThemeButton.textContent = "☀ Light Mode";
+            localStorage.setItem('theme', 'dark');
+        }
+
+        function disableDarkMode() {
+            body.classList.remove('dark-mode');
+            toggleThemeButton.textContent = "🌙 Dark Mode";
+            localStorage.setItem('theme', 'light');
+        }
+
+        toggleThemeButton.addEventListener('click', () => {
+            if (body.classList.contains('dark-mode')) {
+                disableDarkMode();
+            } else {
+                enableDarkMode();
+            }
+        });
+    </script>
+</body>
+</html>
